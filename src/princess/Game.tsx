@@ -1,18 +1,449 @@
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+
 import { confetti } from './Backdrop'
 import { addAura, Section, useLocalStorage } from './ui'
-const DURATION=30
- type Kind='crown'|'gem'|'heart';type Phase='idle'|'playing'|'over';type Item={x:number;y:number;vx:number;vy:number;r:number;rot:number;spin:number;kind:Kind}
-const POINTS:Record<Kind,number>={crown:10,gem:25,heart:5};const clamp=(v:number,a:number,b:number)=>Math.min(b,Math.max(a,v))
-function rankFor(s:number){if(s>=320)return'empress of the entire realm';if(s>=220)return'crown princess, undisputed';if(s>=140)return'duchess of sparkle';if(s>=70)return'lady-in-waiting, but promotion-ready';return'honorary royal, still beloved'}
-function drawCrown(c:CanvasRenderingContext2D,s:number){c.beginPath();c.moveTo(-s,s*.5);c.lineTo(-s*1.2,-s*.55);c.lineTo(-s*.45,-s*.12);c.lineTo(0,-s*.95);c.lineTo(s*.45,-s*.12);c.lineTo(s*1.2,-s*.55);c.lineTo(s,s*.5);c.closePath();c.fill();c.fillStyle='#fffaf0';c.fillRect(-s,s*.5,s*2,s*.34);c.fillStyle='#e2568a';c.beginPath();c.arc(0,s*.18,s*.24,0,Math.PI*2);c.fill();c.fillStyle='#c9a2e8';c.beginPath();c.arc(-s*.62,s*.18,s*.15,0,Math.PI*2);c.arc(s*.62,s*.18,s*.15,0,Math.PI*2);c.fill()}
-function drawItem(c:CanvasRenderingContext2D,i:Item){c.save();c.translate(i.x,i.y);c.rotate(i.rot);c.shadowColor=i.kind==='heart'?'rgba(226,86,138,.45)':'rgba(201,160,106,.45)';c.shadowBlur=16;const s=i.r;if(i.kind==='crown'){c.fillStyle='#e0b078';drawCrown(c,s)}else if(i.kind==='gem'){c.fillStyle='#d8c6f2';c.beginPath();c.moveTo(0,-s);c.lineTo(s*.85,-s*.2);c.lineTo(0,s);c.lineTo(-s*.85,-s*.2);c.closePath();c.fill()}else{c.fillStyle='#e2568a';c.beginPath();c.moveTo(0,s*.75);c.bezierCurveTo(-s*1.35,-s*.15,-s*.9,-s*1.15,0,-s*.45);c.bezierCurveTo(s*.9,-s*1.15,s*1.35,-s*.15,0,s*.75);c.closePath();c.fill()}c.restore()}
-function drawBasket(c:CanvasRenderingContext2D,x:number,y:number){c.save();c.translate(x,y);const g=c.createLinearGradient(0,-30,0,36);g.addColorStop(0,'#fffaf0');g.addColorStop(.55,'#e0b078');g.addColorStop(1,'#b98a52');c.shadowColor='rgba(178,63,106,.3)';c.shadowBlur=26;c.fillStyle=g;c.beginPath();c.moveTo(-60,-24);c.lineTo(60,-24);c.quadraticCurveTo(48,38,0,38);c.quadraticCurveTo(-48,38,-60,-24);c.closePath();c.fill();c.restore()}
-export function Game(){const canvasRef=useRef<HTMLCanvasElement|null>(null),sizeRef=useRef({w:720,h:420}),basketRef=useRef(.5),targetRef=useRef(.5),keysRef=useRef({left:false,right:false}),itemsRef=useRef<Item[]>([]),scoreRef=useRef(0),timeRef=useRef(DURATION),spawnRef=useRef(.4),streakRef=useRef(0),phaseRef=useRef<Phase>('idle'),lastRef=useRef(0),lastScoreRef=useRef(0),lastTimeRef=useRef(DURATION)
-const[phase,setPhase]=useState<Phase>('idle'),[score,setScore]=useState(0),[timeLeft,setTimeLeft]=useState(DURATION),[streak,setStreak]=useState(0),[rank,setRank]=useState(''),[best,setBest]=useLocalStorage<number>('princess.crown-catch-best',0)
-const start=useCallback(()=>{itemsRef.current=[];scoreRef.current=0;timeRef.current=DURATION;spawnRef.current=.35;streakRef.current=0;lastScoreRef.current=0;lastTimeRef.current=DURATION;basketRef.current=.5;targetRef.current=.5;lastRef.current=0;phaseRef.current='playing';setScore(0);setStreak(0);setTimeLeft(DURATION);setRank('');setPhase('playing')},[])
-useEffect(()=>{const canvas=canvasRef.current;if(!canvas)return;const c=canvas.getContext('2d');if(!c)return;let frame=0;const stars=Array.from({length:54},(_,i)=>({x:(i*73%100)/100,y:(i*37%92)/100,r:.6+(i*13%11)/9,a:.2+(i*29%50)/100}));const resize=()=>{const d=Math.min(devicePixelRatio||1,2),r=canvas.getBoundingClientRect();sizeRef.current={w:r.width,h:r.height};canvas.width=Math.max(1,Math.floor(r.width*d));canvas.height=Math.max(1,Math.floor(r.height*d));c.setTransform(d,0,0,d,0,0)};resize();const observer=new ResizeObserver(resize);observer.observe(canvas)
-const tick=(t:number)=>{const{w,h}=sizeRef.current,dt=lastRef.current?Math.min(.05,(t-lastRef.current)/1000):.016;lastRef.current=t;if(phaseRef.current==='playing'){timeRef.current-=dt;if(timeRef.current<=0){timeRef.current=0;phaseRef.current='over';const f=Math.round(scoreRef.current);setPhase('over');setScore(f);setTimeLeft(0);setRank(rankFor(f));setBest(p=>Math.max(p,f));addAura(Math.max(5,Math.floor(f/12)));if(f>0)confetti(.5,.4,90)}if(keysRef.current.left)targetRef.current-=.9*dt;if(keysRef.current.right)targetRef.current+=.9*dt;targetRef.current=clamp(targetRef.current,.09,.91);basketRef.current+=(targetRef.current-basketRef.current)*Math.min(1,dt*14);const elapsed=DURATION-timeRef.current;spawnRef.current-=dt;if(spawnRef.current<=0){const r=Math.random(),kind:Kind=r<.1?'gem':r<.3?'heart':'crown';itemsRef.current.push({x:(.12+Math.random()*.76)*w,y:-28,vx:(Math.random()-.5)*46,vy:108+elapsed*5+Math.random()*42,r:kind==='gem'?11:15,rot:Math.random()*Math.PI,spin:(Math.random()-.5)*2.6,kind});spawnRef.current=Math.max(.3,.72-elapsed*.013)}const bx=basketRef.current*w,floor=h-52;for(let i=itemsRef.current.length-1;i>=0;i--){const it=itemsRef.current[i];it.y+=it.vy*dt;it.x+=it.vx*dt;it.rot+=it.spin*dt;if(it.y>floor-28&&it.y<floor+34&&Math.abs(it.x-bx)<58){scoreRef.current+=POINTS[it.kind]*(1+Math.min(2,Math.floor(streakRef.current/5)*.5));streakRef.current++;itemsRef.current.splice(i,1);setStreak(streakRef.current);continue}if(it.y>h+40){itemsRef.current.splice(i,1);if(it.kind!=='gem'&&streakRef.current){streakRef.current=0;setStreak(0)}}}const rs=Math.round(scoreRef.current);if(rs!==lastScoreRef.current){lastScoreRef.current=rs;setScore(rs)}const rt=Math.ceil(timeRef.current);if(rt!==lastTimeRef.current){lastTimeRef.current=rt;setTimeLeft(rt)}}c.clearRect(0,0,w,h);const sky=c.createLinearGradient(0,0,0,h);sky.addColorStop(0,'#fff9fc');sky.addColorStop(.7,'#ffeef5');sky.addColorStop(1,'#ffe0ee');c.fillStyle=sky;c.fillRect(0,0,w,h);c.fillStyle='#e2568a';for(const s of stars){c.globalAlpha=s.a;c.beginPath();c.arc(s.x*w,s.y*h*.72,s.r,0,Math.PI*2);c.fill()}c.globalAlpha=1;const floorGlow=c.createRadialGradient(basketRef.current*w,h-30,0,basketRef.current*w,h-30,190);floorGlow.addColorStop(0,'rgba(226,86,138,.16)');floorGlow.addColorStop(1,'rgba(226,86,138,0)');c.fillStyle=floorGlow;c.fillRect(0,h-230,w,230);for(const it of itemsRef.current)drawItem(c,it);drawBasket(c,basketRef.current*w,h-52);frame=requestAnimationFrame(tick)};frame=requestAnimationFrame(tick);return()=>{cancelAnimationFrame(frame);observer.disconnect()}},[setBest])
-useEffect(()=>{const down=(e:KeyboardEvent)=>{if(phaseRef.current!=='playing')return;if(['ArrowLeft','a','A'].includes(e.key)){keysRef.current.left=true;e.preventDefault()}if(['ArrowRight','d','D'].includes(e.key)){keysRef.current.right=true;e.preventDefault()}},up=(e:KeyboardEvent)=>{if(['ArrowLeft','a','A'].includes(e.key))keysRef.current.left=false;if(['ArrowRight','d','D'].includes(e.key))keysRef.current.right=false};addEventListener('keydown',down);addEventListener('keyup',up);return()=>{removeEventListener('keydown',down);removeEventListener('keyup',up)}},[])
-const aim=(e:ReactPointerEvent<HTMLCanvasElement>)=>{const r=e.currentTarget.getBoundingClientRect();targetRef.current=clamp((e.clientX-r.left)/r.width,.09,.91)}
-return <Section id="game" eyebrow="thirty seconds, one basket" title="Crown" accent="catch" intro="Catch the crowns, grab the gems, and try not to drop the hearts. Move with your finger, the mouse, or the arrow keys."><div className="relative mx-auto max-w-4xl"><div className="relative overflow-hidden rounded-[2rem] border border-line bg-white shadow-petal"><canvas ref={canvasRef} onPointerMove={aim} onPointerDown={e=>{aim(e);if(phaseRef.current==='idle'||phaseRef.current==='over')start()}} className="block h-[380px] w-full touch-none sm:h-[440px]" aria-label="Crown catching game"/><div className="pointer-events-none absolute inset-x-0 top-0 flex justify-between p-4"><span className="glass rounded-xl px-3 py-1.5 text-sm">Score {score} · {timeLeft}s · best {best}</span>{streak>1&&<span>streak ×{streak}</span>}</div>{phase!=='playing'&&<div className="absolute inset-0 grid place-items-center bg-white/55 p-5 backdrop-blur-[3px]"><div className="glass card-edge max-w-sm rounded-3xl p-6 text-center"><p className="script foil text-4xl">{phase==='idle'?'Crown Catch':score}</p><p className="mt-2 text-sm text-muted">{phase==='idle'?'Hearts are 5, crowns 10, gems 25. Five catches in a row and everything is worth more.':rank}</p><button type="button" onClick={start} className="mt-5 rounded-full bg-gradient-to-r from-rose to-rose-deep px-7 py-3 text-sm font-medium text-white">{phase==='idle'?'Begin the reign':'Steal the crown again'}</button></div></div>}</div><p className="mt-4 text-center text-xs text-muted">tap or drag to move · arrow keys work too · your best score is remembered</p></div></Section>}
+
+const DURATION = 30
+
+type Kind = 'crown' | 'gem' | 'heart'
+type Phase = 'idle' | 'playing' | 'over'
+
+type Item = {
+  x: number
+  y: number
+  vx: number
+  vy: number
+  r: number
+  rot: number
+  spin: number
+  kind: Kind
+}
+
+const POINTS: Record<Kind, number> = { crown: 10, gem: 25, heart: 5 }
+
+const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
+
+function rankFor(score: number) {
+  if (score >= 320) return 'empress of the entire realm'
+  if (score >= 220) return 'crown princess, undisputed'
+  if (score >= 140) return 'duchess of sparkle'
+  if (score >= 70) return 'lady-in-waiting, but promotion-ready'
+  return 'honorary royal, still beloved'
+}
+
+function drawCrown(ctx: CanvasRenderingContext2D, s: number) {
+  ctx.beginPath()
+  ctx.moveTo(-s, s * 0.5)
+  ctx.lineTo(-s * 1.2, -s * 0.55)
+  ctx.lineTo(-s * 0.45, -s * 0.12)
+  ctx.lineTo(0, -s * 0.95)
+  ctx.lineTo(s * 0.45, -s * 0.12)
+  ctx.lineTo(s * 1.2, -s * 0.55)
+  ctx.lineTo(s, s * 0.5)
+  ctx.closePath()
+  ctx.fill()
+  ctx.fillStyle = '#fffaf0'
+  ctx.fillRect(-s, s * 0.5, s * 2, s * 0.34)
+  ctx.fillStyle = '#e2568a'
+  ctx.beginPath()
+  ctx.arc(0, s * 0.18, s * 0.24, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.fillStyle = '#c9a2e8'
+  ctx.beginPath()
+  ctx.arc(-s * 0.62, s * 0.18, s * 0.15, 0, Math.PI * 2)
+  ctx.arc(s * 0.62, s * 0.18, s * 0.15, 0, Math.PI * 2)
+  ctx.fill()
+}
+
+function drawItem(ctx: CanvasRenderingContext2D, item: Item) {
+  ctx.save()
+  ctx.translate(item.x, item.y)
+  ctx.rotate(item.rot)
+  ctx.shadowColor = item.kind === 'heart' ? 'rgba(226,86,138,0.45)' : 'rgba(201,160,106,0.45)'
+  ctx.shadowBlur = 16
+  const s = item.r
+  if (item.kind === 'crown') {
+    ctx.fillStyle = '#e0b078'
+    drawCrown(ctx, s)
+  } else if (item.kind === 'gem') {
+    ctx.fillStyle = '#d8c6f2'
+    ctx.beginPath()
+    ctx.moveTo(0, -s)
+    ctx.lineTo(s * 0.85, -s * 0.2)
+    ctx.lineTo(0, s)
+    ctx.lineTo(-s * 0.85, -s * 0.2)
+    ctx.closePath()
+    ctx.fill()
+    ctx.fillStyle = 'rgba(255,255,255,0.55)'
+    ctx.beginPath()
+    ctx.moveTo(0, -s)
+    ctx.lineTo(s * 0.85, -s * 0.2)
+    ctx.lineTo(0, 0)
+    ctx.closePath()
+    ctx.fill()
+  } else {
+    ctx.fillStyle = '#e2568a'
+    ctx.beginPath()
+    ctx.moveTo(0, s * 0.75)
+    ctx.bezierCurveTo(-s * 1.35, -s * 0.15, -s * 0.9, -s * 1.15, 0, -s * 0.45)
+    ctx.bezierCurveTo(s * 0.9, -s * 1.15, s * 1.35, -s * 0.15, 0, s * 0.75)
+    ctx.closePath()
+    ctx.fill()
+    ctx.fillStyle = 'rgba(255,255,255,0.5)'
+    ctx.beginPath()
+    ctx.arc(-s * 0.38, -s * 0.4, s * 0.18, 0, Math.PI * 2)
+    ctx.fill()
+  }
+  ctx.restore()
+}
+
+function drawBasket(ctx: CanvasRenderingContext2D, x: number, floor: number) {
+  ctx.save()
+  ctx.translate(x, floor)
+  const grad = ctx.createLinearGradient(0, -30, 0, 36)
+  grad.addColorStop(0, '#fffaf0')
+  grad.addColorStop(0.55, '#e0b078')
+  grad.addColorStop(1, '#b98a52')
+  ctx.shadowColor = 'rgba(178,63,106,0.3)'
+  ctx.shadowBlur = 26
+  ctx.fillStyle = grad
+  ctx.beginPath()
+  ctx.moveTo(-60, -24)
+  ctx.lineTo(60, -24)
+  ctx.quadraticCurveTo(48, 38, 0, 38)
+  ctx.quadraticCurveTo(-48, 38, -60, -24)
+  ctx.closePath()
+  ctx.fill()
+  ctx.shadowBlur = 0
+  ctx.fillStyle = '#e2568a'
+  ctx.beginPath()
+  ctx.ellipse(0, -24, 60, 11, 0, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.fillStyle = '#fff2f7'
+  ctx.beginPath()
+  ctx.ellipse(0, -24, 51, 8, 0, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.strokeStyle = 'rgba(140,43,85,0.18)'
+  ctx.lineWidth = 1.5
+  ctx.beginPath()
+  ctx.moveTo(-52, -6)
+  ctx.quadraticCurveTo(0, 34, 52, -6)
+  ctx.stroke()
+  ctx.fillStyle = '#e2568a'
+  ctx.beginPath()
+  ctx.arc(0, -6, 4.5, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.restore()
+}
+
+export function Game() {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const sizeRef = useRef({ w: 720, h: 420 })
+  const basketRef = useRef(0.5)
+  const targetRef = useRef(0.5)
+  const keysRef = useRef({ left: false, right: false })
+  const itemsRef = useRef<Item[]>([])
+  const scoreRef = useRef(0)
+  const timeRef = useRef(DURATION)
+  const spawnRef = useRef(0.4)
+  const streakRef = useRef(0)
+  const phaseRef = useRef<Phase>('idle')
+  const lastRef = useRef(0)
+  const lastScoreRef = useRef(0)
+  const lastTimeRef = useRef(DURATION)
+
+  const [phase, setPhase] = useState<Phase>('idle')
+  const [score, setScore] = useState(0)
+  const [timeLeft, setTimeLeft] = useState(DURATION)
+  const [streak, setStreak] = useState(0)
+  const [rank, setRank] = useState('')
+  const [best, setBest] = useLocalStorage<number>('princess.crown-catch-best', 0)
+
+  const start = useCallback(() => {
+    itemsRef.current = []
+    scoreRef.current = 0
+    timeRef.current = DURATION
+    spawnRef.current = 0.35
+    streakRef.current = 0
+    lastScoreRef.current = 0
+    lastTimeRef.current = DURATION
+    basketRef.current = 0.5
+    targetRef.current = 0.5
+    lastRef.current = 0
+    phaseRef.current = 'playing'
+    setScore(0)
+    setStreak(0)
+    setTimeLeft(DURATION)
+    setRank('')
+    setPhase('playing')
+  }, [])
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    let frame = 0
+    const stars = Array.from({ length: 54 }, (_, i) => ({
+      x: ((i * 73) % 100) / 100,
+      y: ((i * 37) % 92) / 100,
+      r: 0.6 + ((i * 13) % 11) / 9,
+      a: 0.2 + ((i * 29) % 50) / 100,
+    }))
+
+    const resize = () => {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2)
+      const rect = canvas.getBoundingClientRect()
+      sizeRef.current = { w: rect.width, h: rect.height }
+      canvas.width = Math.max(1, Math.floor(rect.width * dpr))
+      canvas.height = Math.max(1, Math.floor(rect.height * dpr))
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    }
+    resize()
+    const observer = new ResizeObserver(resize)
+    observer.observe(canvas)
+
+    const tick = (time: number) => {
+      const { w, h } = sizeRef.current
+      const dt = lastRef.current ? Math.min(0.05, (time - lastRef.current) / 1000) : 0.016
+      lastRef.current = time
+
+      // --- update ---------------------------------------------------------
+      if (phaseRef.current === 'playing') {
+        timeRef.current -= dt
+        if (timeRef.current <= 0) {
+          timeRef.current = 0
+          phaseRef.current = 'over'
+          const final = Math.round(scoreRef.current)
+          setPhase('over')
+          setScore(final)
+          setTimeLeft(0)
+          setRank(rankFor(final))
+          setBest((previous) => Math.max(previous, final))
+          addAura(Math.max(5, Math.floor(final / 12)))
+          if (final > 0) confetti(0.5, 0.4, 90)
+        }
+
+        if (keysRef.current.left) targetRef.current -= 0.9 * dt
+        if (keysRef.current.right) targetRef.current += 0.9 * dt
+        targetRef.current = clamp(targetRef.current, 0.09, 0.91)
+        basketRef.current += (targetRef.current - basketRef.current) * Math.min(1, dt * 14)
+
+        const elapsed = DURATION - timeRef.current
+        spawnRef.current -= dt
+        if (spawnRef.current <= 0) {
+          const roll = Math.random()
+          const kind: Kind = roll < 0.1 ? 'gem' : roll < 0.3 ? 'heart' : 'crown'
+          itemsRef.current.push({
+            x: (0.12 + Math.random() * 0.76) * w,
+            y: -28,
+            vx: (Math.random() - 0.5) * 46,
+            vy: 108 + elapsed * 5 + Math.random() * 42,
+            r: kind === 'gem' ? 11 : 15,
+            rot: Math.random() * Math.PI,
+            spin: (Math.random() - 0.5) * 2.6,
+            kind,
+          })
+          spawnRef.current = Math.max(0.3, 0.72 - elapsed * 0.013)
+        }
+
+        const basketX = basketRef.current * w
+        const floor = h - 52
+        for (let i = itemsRef.current.length - 1; i >= 0; i -= 1) {
+          const item = itemsRef.current[i]
+          item.y += item.vy * dt
+          item.x += item.vx * dt
+          item.rot += item.spin * dt
+
+          const caught = item.y > floor - 28 && item.y < floor + 34 && Math.abs(item.x - basketX) < 58
+          if (caught) {
+            const multiplier = 1 + Math.min(2, Math.floor(streakRef.current / 5) * 0.5)
+            scoreRef.current += POINTS[item.kind] * multiplier
+            streakRef.current += 1
+            itemsRef.current.splice(i, 1)
+            setStreak(streakRef.current)
+            continue
+          }
+          if (item.y > h + 40) {
+            itemsRef.current.splice(i, 1)
+            if (item.kind !== 'gem' && streakRef.current > 0) {
+              streakRef.current = 0
+              setStreak(0)
+            }
+          }
+        }
+
+        const roundedScore = Math.round(scoreRef.current)
+        if (roundedScore !== lastScoreRef.current) {
+          lastScoreRef.current = roundedScore
+          setScore(roundedScore)
+        }
+        const roundedTime = Math.ceil(timeRef.current)
+        if (roundedTime !== lastTimeRef.current) {
+          lastTimeRef.current = roundedTime
+          setTimeLeft(roundedTime)
+        }
+      }
+
+      // --- draw -----------------------------------------------------------
+      ctx.clearRect(0, 0, w, h)
+      const sky = ctx.createLinearGradient(0, 0, 0, h)
+      sky.addColorStop(0, '#fff9fc')
+      sky.addColorStop(0.7, '#ffeef5')
+      sky.addColorStop(1, '#ffe0ee')
+      ctx.fillStyle = sky
+      ctx.fillRect(0, 0, w, h)
+
+      ctx.fillStyle = '#e2568a'
+      for (const star of stars) {
+        ctx.globalAlpha = star.a
+        ctx.beginPath()
+        ctx.arc(star.x * w, star.y * h * 0.72, star.r, 0, Math.PI * 2)
+        ctx.fill()
+      }
+      ctx.globalAlpha = 1
+
+      const moon = ctx.createRadialGradient(w - 70, 66, 0, w - 70, 66, 110)
+      moon.addColorStop(0, 'rgba(255,196,220,0.55)')
+      moon.addColorStop(0.45, 'rgba(255,196,220,0.16)')
+      moon.addColorStop(1, 'rgba(255,196,220,0)')
+      ctx.fillStyle = moon
+      ctx.fillRect(w - 200, 0, 200, 220)
+      ctx.fillStyle = 'rgba(255,255,255,0.95)'
+      ctx.beginPath()
+      ctx.arc(w - 70, 66, 18, 0, Math.PI * 2)
+      ctx.fill()
+
+      const floorGlow = ctx.createRadialGradient(basketRef.current * w, h - 30, 0, basketRef.current * w, h - 30, 190)
+      floorGlow.addColorStop(0, 'rgba(226,86,138,0.16)')
+      floorGlow.addColorStop(1, 'rgba(226,86,138,0)')
+      ctx.fillStyle = floorGlow
+      ctx.fillRect(0, h - 230, w, 230)
+
+      for (const item of itemsRef.current) drawItem(ctx, item)
+      drawBasket(ctx, basketRef.current * w, h - 52)
+
+      frame = window.requestAnimationFrame(tick)
+    }
+    frame = window.requestAnimationFrame(tick)
+
+    return () => {
+      window.cancelAnimationFrame(frame)
+      observer.disconnect()
+    }
+  }, [setBest])
+
+  useEffect(() => {
+    const down = (event: KeyboardEvent) => {
+      if (phaseRef.current !== 'playing') return
+      if (event.key === 'ArrowLeft' || event.key === 'a' || event.key === 'A') {
+        keysRef.current.left = true
+        event.preventDefault()
+      }
+      if (event.key === 'ArrowRight' || event.key === 'd' || event.key === 'D') {
+        keysRef.current.right = true
+        event.preventDefault()
+      }
+    }
+    const up = (event: KeyboardEvent) => {
+      if (event.key === 'ArrowLeft' || event.key === 'a' || event.key === 'A') keysRef.current.left = false
+      if (event.key === 'ArrowRight' || event.key === 'd' || event.key === 'D') keysRef.current.right = false
+    }
+    window.addEventListener('keydown', down)
+    window.addEventListener('keyup', up)
+    return () => {
+      window.removeEventListener('keydown', down)
+      window.removeEventListener('keyup', up)
+    }
+  }, [])
+
+  const aim = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect()
+    targetRef.current = clamp((event.clientX - rect.left) / rect.width, 0.09, 0.91)
+  }
+
+  return (
+    <Section
+      id="game"
+      eyebrow="thirty seconds, one basket"
+      title="Crown"
+      accent="catch"
+      intro="Catch the crowns, grab the gems, and try not to drop the hearts. Move with your finger, the mouse, or the arrow keys."
+    >
+      <div className="relative mx-auto max-w-4xl">
+        <div className="relative overflow-hidden rounded-[2rem] border border-line bg-white shadow-petal">
+          <canvas
+            ref={canvasRef}
+            onPointerMove={aim}
+            onPointerDown={(event) => {
+              aim(event)
+              if (phaseRef.current === 'idle' || phaseRef.current === 'over') start()
+            }}
+            className="block h-[380px] w-full touch-none sm:h-[440px]"
+            aria-label="Crown catching game"
+          />
+
+          <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between gap-3 p-4 sm:p-5">
+            <div className="flex gap-2">
+              <span className="glass rounded-xl px-3 py-1.5 text-[0.6rem] tracking-[0.18em] text-ink/80 uppercase">
+                score <b className="ml-1 font-serif text-base text-rose-deep">{score}</b>
+              </span>
+              <span className="glass rounded-xl px-3 py-1.5 text-[0.6rem] tracking-[0.18em] text-ink/80 uppercase">
+                time <b className="ml-1 font-serif text-base text-rose-deep">{timeLeft}s</b>
+              </span>
+              {streak > 1 ? (
+                <span className="glass rounded-xl px-3 py-1.5 text-[0.6rem] tracking-[0.18em] text-rose uppercase">
+                  streak ×{streak}
+                </span>
+              ) : null}
+            </div>
+            <span className="glass rounded-xl px-3 py-1.5 text-[0.6rem] tracking-[0.18em] text-muted uppercase">
+              best {best}
+            </span>
+          </div>
+
+          {phase !== 'playing' ? (
+            <div className="absolute inset-0 grid place-items-center bg-white/55 p-5 backdrop-blur-[3px]">
+              <div className="glass card-edge w-full max-w-sm rounded-3xl p-6 text-center">
+                {phase === 'idle' ? (
+                  <>
+                    <p className="script foil text-4xl">Crown Catch</p>
+                    <p className="mt-2 text-sm text-muted">
+                      Hearts are 5, crowns 10, gems 25. Five catches in a row and everything is worth more.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={start}
+                      className="mt-5 rounded-full bg-gradient-to-r from-rose to-rose-deep px-7 py-3 text-sm font-medium text-white shadow-petal transition hover:brightness-105"
+                    >
+                      Begin the reign
+                    </button>
+                    <p className="mt-3 text-[0.6rem] tracking-[0.2em] text-muted/70 uppercase">30 seconds · no pressure · some pressure</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="script foil text-4xl">{score}</p>
+                    <p className="mt-1 text-[0.62rem] tracking-[0.26em] text-rose/80 uppercase">points in thirty seconds</p>
+                    <p className="mt-3 font-serif text-xl text-ink">{rank}</p>
+                    <p className="mt-1 text-xs text-muted">Personal best: {best}</p>
+                    <button
+                      type="button"
+                      onClick={start}
+                      className="mt-5 rounded-full bg-gradient-to-r from-rose to-rose-deep px-7 py-3 text-sm font-medium text-white transition hover:brightness-105"
+                    >
+                      Steal the crown again
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          ) : null}
+        </div>
+        <p className="mt-4 text-center text-[0.66rem] tracking-[0.22em] text-muted/70 uppercase">
+          tap or drag to move · arrow keys work too · your best score is remembered
+        </p>
+      </div>
+    </Section>
+  )
+}
